@@ -18,10 +18,6 @@
 
 #include <linux/input.h>
 
-#define KEY_LOGD(fmt, args...) printk(KERN_DEBUG "[KEY] "fmt, ##args)
-#define KEY_LOGI(fmt, args...) printk(KERN_INFO "[KEY] "fmt, ##args)
-#define KEY_LOGE(fmt, args...) printk(KERN_ERR "[KEY] "fmt, ##args)
-
 struct gpio_event_input_devs {
 	int count;
 	struct input_dev *dev[];

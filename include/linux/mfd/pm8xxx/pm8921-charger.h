@@ -66,11 +66,9 @@ enum pm8921_usb_debounce_time {
  *				after the battery has been fully charged
  * @term_current:	the charger current (mA) at which EOC happens
  * @cool_temp:		the temperature (degC) at which the battery is
- *			considered cool charging current and voltage is reduced.
- *			Use INT_MIN to indicate not valid.
+ *			considered cool charging current and voltage is reduced
  * @warm_temp:		the temperature (degC) at which the battery is
- *			considered warm charging current and voltage is reduced.
- *			Use INT_MIN to indicate not valid.
+ *			considered warm charging current and voltage is reduced
  * @temp_check_period:	The polling interval in seconds to check battery
  *			temeperature if it has gone to cool or warm temperature
  *			area
@@ -113,8 +111,8 @@ struct pm8921_charger_platform_data {
 	unsigned int			min_voltage;
 	unsigned int			resume_voltage_delta;
 	unsigned int			term_current;
-	int						cool_temp;
-	int						warm_temp;
+	unsigned int			cool_temp;
+	unsigned int			warm_temp;
 	unsigned int			temp_check_period;
 	unsigned int			max_bat_chg_current;
 	unsigned int			cool_bat_chg_current;
