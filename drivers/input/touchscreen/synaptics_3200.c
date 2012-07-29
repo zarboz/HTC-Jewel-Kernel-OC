@@ -103,7 +103,6 @@ struct synaptics_ts_data {
 	uint8_t segmentation_bef_unlock;
 	uint8_t segmentation_aft_unlock;
 	uint8_t psensor_status;
-	uint8_t i2c_err_handler_en;
 };
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -307,15 +306,19 @@ static int i2c_syn_error_handler(struct synaptics_ts_data *ts, uint8_t reset, ch
 			ret = ts->power(1);
 			if (ret < 0)
 				printk(KERN_ERR "[TP] TOUCH_ERR: synaptics i2c error handler power on failed\n");
-			ret = synaptics_init_panel(ts);
-			if (ret < 0)
-				printk(KERN_ERR "[TP] TOUCH_ERR: synaptics i2c error handler init panel failed\n");
-		} else if (ts->gpio_reset) {
-			gpio_direction_output(ts->gpio_reset, 0);
-			msleep(1);
-			gpio_direction_output(ts->gpio_reset, 1);
-			printk(KERN_INFO "[TP] %s: synaptics touch chip reseted.\n", __func__);
+		} else {
+			/*	ret = i2c_syn_write_byte_data(ts->client,
+					get_address_base(ts, 0x01, COMMAND_BASE), 0x01);
+				if (ret < 0)
+					printk(KERN_INFO "[TP] TOUCH_ERR: synaptics i2c error handler SW reset failed\n");
+				else
+					printk(KERN_INFO "[TP] synaptics i2c error handler: reset chip by reset command\n");
+				msleep(250);
+			*/
 		}
+		ret = synaptics_init_panel(ts);
+		if (ret < 0)
+			printk(KERN_ERR "[TP] TOUCH_ERR: synaptics i2c error handler init panel failed\n");
 
 		if (!ts->use_irq) {
 			hrtimer_cancel(&ts->timer);
@@ -387,7 +390,7 @@ static int wait_flash_interrupt(struct synaptics_ts_data *ts, int attr)
 			ret = i2c_syn_read(ts->client,
 				get_address_base(ts, 0x01, DATA_BASE) + 1, &data, 1);
 			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+				return i2c_syn_error_handler(ts, 0, "r:1", __func__);
 			if ((data & 0x01) == 0x01) {
 #ifdef SYN_FLASH_PROGRAMMING_LOG
 				printk(KERN_INFO "[TP] ATT: %d, status: %x\n", gpio_get_value(attr), data);
@@ -401,7 +404,7 @@ static int wait_flash_interrupt(struct synaptics_ts_data *ts, int attr)
 	if (i == 5 && syn_panel_version == 0) {
 		ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, DATA_BASE) + 1, &data, 1);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:2", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:2", __func__);
 	} else if (i == 5) {
 		printk(KERN_INFO "[TP] wait_flash_interrupt: interrupt over time!\n");
 		return SYN_PROCESS_ERR;
@@ -410,7 +413,7 @@ static int wait_flash_interrupt(struct synaptics_ts_data *ts, int attr)
 	ret = i2c_syn_read(ts->client,
 		get_address_base(ts, 0x34, DATA_BASE) + 18, &data, 1);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:3", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:3", __func__);
 	/* check = 0x80 */
 	if (data != 0x80) {
 		printk(KERN_INFO "[TP] wait_flash_interrupt: block config fail!\n");
@@ -428,18 +431,18 @@ static int enable_flash_programming(struct synaptics_ts_data *ts, int attr)
 	ret = i2c_syn_read(ts->client,
 		get_address_base(ts, 0x34, QUERY_BASE), data, 2);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:1", __func__);
 	/* printk("%s: data: %x, %x\n", __func__, data[0], data[1]); */
 
 	ret = i2c_syn_write(ts->client,
 		get_address_base(ts, 0x34, DATA_BASE) + 2, data, 2);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
+		return i2c_syn_error_handler(ts, 0, "w:2", __func__);
 
 	ret = i2c_syn_write_byte_data(ts->client,
 		get_address_base(ts, 0x34, DATA_BASE) + 18, 0x0F);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:3", __func__);
+		return i2c_syn_error_handler(ts, 0, "w:3", __func__);
 
 	ret = wait_flash_interrupt(ts, attr);
 	if (ret < 0)
@@ -466,12 +469,12 @@ static int crc_comparison(struct synaptics_ts_data *ts, uint32_t config_crc, int
 		ret = i2c_syn_write(ts->client,
 			get_address_base(ts, 0x34, DATA_BASE), data, 2);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
+			return i2c_syn_error_handler(ts, 0, "w:1", __func__);
 
 		ret = i2c_syn_write_byte_data(ts->client,
 			get_address_base(ts, 0x34, DATA_BASE) + 18, 0x05);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
+			return i2c_syn_error_handler(ts, 0, "w:2", __func__);
 
 		ret = wait_flash_interrupt(ts, attr);
 		if (ret < 0)
@@ -480,7 +483,7 @@ static int crc_comparison(struct synaptics_ts_data *ts, uint32_t config_crc, int
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, 0x34, DATA_BASE) + 2, data, 17);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:3", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:3", __func__);
 
 		memcpy(&flash_crc, &data[12], 4);
 
@@ -508,18 +511,18 @@ static int program_config(struct synaptics_ts_data *ts, uint8_t *config, int att
 		get_address_base(ts, 0x34, QUERY_BASE), data, 2);
 	/* printk("%s: data: %x, %x\n", __func__, data[0], data[1]); */
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:1", __func__);
 
 	ret = i2c_syn_write(ts->client,
 		get_address_base(ts, 0x34, DATA_BASE) + 2, data, 2);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
+		return i2c_syn_error_handler(ts, 0, "w:2", __func__);
 
 	/* printk("ATT: %d\n", gpio_get_value(attr)); */
 	ret = i2c_syn_write_byte_data(ts->client,
 		get_address_base(ts, 0x34, DATA_BASE) + 18, 0x07);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:3", __func__);
+		return i2c_syn_error_handler(ts, 0, "w:3", __func__);
 
 	ret = wait_flash_interrupt(ts, attr);
 	if (ret < 0)
@@ -533,7 +536,7 @@ static int program_config(struct synaptics_ts_data *ts, uint8_t *config, int att
 		ret = i2c_syn_write(ts->client,
 			get_address_base(ts, 0x34, DATA_BASE), data, 19);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:4", __func__);
+			return i2c_syn_error_handler(ts, 0, "w:4", __func__);
 
 		ret = wait_flash_interrupt(ts, attr);
 		if (ret < 0)
@@ -551,13 +554,13 @@ static int disable_flash_programming(struct synaptics_ts_data *ts, int status)
 	ret = i2c_syn_write_byte_data(ts->client,
 		get_address_base(ts, 0x01, COMMAND_BASE), 0x01);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
+		return i2c_syn_error_handler(ts, 0, "w:1", __func__);
 
 	for (i = 0; i < 25; i++) {
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, 0x01, DATA_BASE), &data, 1);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:2", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:2", __func__);
 
 		if ((data & 0x40) == 0)
 			break;
@@ -767,7 +770,7 @@ static ssize_t register_show(struct device *dev,
 
 	ret = i2c_syn_read(ts->client, syn_reg_addr, &data, 1);
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r", __func__);
+		i2c_syn_error_handler(ts, 0, "r", __func__);
 		ret += sprintf(buf, "addr: 0x , data: 0x \n");
 	} else {
 		ret += sprintf(buf, "addr: 0x%X, data: 0x%X\n", syn_reg_addr, data);
@@ -802,7 +805,7 @@ static ssize_t register_store(struct device *dev,
 			ret = i2c_syn_write_byte_data(ts->client,
 					syn_reg_addr, write_da);
 			if (ret < 0) {
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w", __func__);
+				i2c_syn_error_handler(ts, 0, "w", __func__);
 			}
 		}
 	}
@@ -846,7 +849,7 @@ static ssize_t syn_diag_show(struct device *dev,
 	ret = i2c_syn_write_byte_data(ts->client,
 		get_address_base(ts, 0x54, DATA_BASE), ts->diag_command);
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
+		i2c_syn_error_handler(ts, 0, "w:1", __func__);
 		count += sprintf(buf, "[TP] TOUCH_ERR: %s: i2c write fail(%d)\n", __func__, ret);
 		return count;
 	}
@@ -857,7 +860,7 @@ static ssize_t syn_diag_show(struct device *dev,
 		get_address_base(ts, 0x54, COMMAND_BASE), 0x01);
 	if (ret < 0) {
 		atomic_set(&ts->data_ready, 1);
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
+		i2c_syn_error_handler(ts, 0, "w:2", __func__);
 		count += sprintf(buf, "[TP] TOUCH_ERR: %s: i2c write fail(%d)\n", __func__, ret);
 		return count;
 	}
@@ -914,19 +917,19 @@ static ssize_t syn_unlock_store(struct device *dev,
 		ret = i2c_syn_write_byte_data(ts->client,
 			get_address_base(ts, 0x54, CONTROL_BASE) + 0x10, 0x0);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
+			return i2c_syn_error_handler(ts, 0, "w:1", __func__);
 
 		ret = i2c_syn_write_byte_data(ts->client,
 			get_address_base(ts, 0x54, COMMAND_BASE), 0x04);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
+			return i2c_syn_error_handler(ts, 0, "w:2", __func__);
 
 		/*printk(KERN_INFO "[TP] %s: Touch Calibration Confirmed\n", __func__);*/
 
 		ret = i2c_syn_write_byte_data(ts->client,
 			get_address_base(ts, 0x11, COMMAND_BASE), 0x01);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:3", __func__);
+			return i2c_syn_error_handler(ts, 0, "w:3", __func__);
 		printk(KERN_INFO "[TP] %s: Touch Calibration Confirmed, rezero\n", __func__);
 #endif
 
@@ -934,7 +937,7 @@ static ssize_t syn_unlock_store(struct device *dev,
 			ret = i2c_syn_write_byte_data(ts->client,
 				get_address_base(ts, 0x11, CONTROL_BASE) + 0x29, ts->default_large_obj);
 			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:4", __func__);
+				return i2c_syn_error_handler(ts, 0, "w:4", __func__);
 			printk(KERN_INFO "[TP] %s: unlock confirmed. set large obj suppression: %x\n"
 				, __func__, ts->default_large_obj);
 		}
@@ -943,7 +946,7 @@ static ssize_t syn_unlock_store(struct device *dev,
 			ret = i2c_syn_write_byte_data(ts->client,
 				get_address_base(ts, 0x11, CONTROL_BASE) + 0x22, ts->segmentation_aft_unlock);
 			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:5", __func__);
+				return i2c_syn_error_handler(ts, 0, "w:5", __func__);
 			printk(KERN_INFO "[TP] %s: unlock confirmed. set segmentation aggressiveness: %x\n"
 				, __func__, ts->segmentation_aft_unlock);
 		}
@@ -996,7 +999,7 @@ static ssize_t syn_config_show(struct device *dev,
 				ret = i2c_syn_read(ts->client, ts->address_table[j].control_base,
 					&ts->config_table[length], size);
 				if (ret < 0) {
-					i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w", __func__);
+					i2c_syn_error_handler(ts, 0, "w", __func__);
 					count += sprintf(buf, "[TP] TOUCH_ERR: %s: i2c write fail(%d)\n", __func__, ret);
 					return count;
 				}
@@ -1203,9 +1206,9 @@ static ssize_t syn_reset(struct device *dev,
 
 	if (buf[0] == '1' && ts->gpio_reset) {
 		gpio_direction_output(ts->gpio_reset, 0);
-		msleep(1);
+		msleep(10);
 		gpio_direction_output(ts->gpio_reset, 1);
-		printk(KERN_INFO "[TP] %s: synaptics touch chip reseted.\n", __func__);
+		printk(KERN_INFO "[TP] synaptics touch chip reseted.\n");
 	}
 
 	return count;
@@ -1314,40 +1317,19 @@ static int synaptics_init_panel(struct synaptics_ts_data *ts)
 	ret = i2c_syn_write_byte_data(ts->client,
 			get_address_base(ts, 0x01, CONTROL_BASE), 0x80);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
-	if (ts->pre_finger_data[0][0] < 2) {
-		if (ts->large_obj_check) {
-			ret = i2c_syn_write_byte_data(ts->client,
-				get_address_base(ts, 0x11, CONTROL_BASE) + 0x29, ts->default_large_obj & 0x7F);
-			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
-			printk(KERN_INFO "[TP] %s: set large obj suppression register to: %x\n", __func__, ts->default_large_obj & 0x7F);
-		}
+		return i2c_syn_error_handler(ts, 0, "w:1", __func__);
 
-		if (ts->segmentation_bef_unlock) {
-			ret = i2c_syn_write_byte_data(ts->client,
-				get_address_base(ts, 0x11, CONTROL_BASE) + 0x22, ts->segmentation_bef_unlock);
-			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
-			printk(KERN_INFO "[TP] %s: set segmentation aggressiveness to: %x\n", __func__, ts->segmentation_bef_unlock);
-		}
-	}
-
-#ifdef SYN_CALIBRATION_CONTROL
-	if (ts->pre_finger_data[0][0] >= 2 || ts->mfg_flag == 1) {
+	if (ts->mfg_flag == 1) {
 		ret = i2c_syn_write_byte_data(ts->client,
-			get_address_base(ts, 0x54, CONTROL_BASE) + 0x10, 0x0);
+	                get_address_base(ts, 0x54, CONTROL_BASE) + 0x10, 0);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:3", __func__);
-
+			i2c_syn_error_handler(ts, 1, "fast relaxation", __func__);
 		ret = i2c_syn_write_byte_data(ts->client,
-			get_address_base(ts, 0x54, COMMAND_BASE), 0x04);
+	                get_address_base(ts, 0x54, COMMAND_BASE), 0x04);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:4", __func__);
-
-		printk(KERN_INFO "[TP] %s: Touch init: set fast relaxation to 0x0\n", __func__);
+			i2c_syn_error_handler(ts, 1, "force update", __func__);
+		printk("[TP] %s set fast relaxation to 0\n", __func__);
 	}
-#endif
 
 	return ret;
 }
@@ -1361,7 +1343,7 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 	ret = i2c_syn_read(ts->client,
 		get_address_base(ts, 0x01, DATA_BASE) + 2, buf, sizeof(buf));
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+		i2c_syn_error_handler(ts, 0, "r:1", __func__);
 	} else {
 		int finger_data[ts->finger_support][4];
 		int base = (ts->finger_support + 3) / 4;
@@ -1421,6 +1403,8 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 				input_report_abs(ts->input_dev, ABS_MT_POSITION, 1 << 31);
 			}
 
+			if (!ts->first_pressed)
+				ts->first_pressed = 1;
 #ifdef SYN_FILTER_CONTROL
 			if (ts->filter_level[0])
 				ts->ambiguous_state = 0;
@@ -1452,8 +1436,6 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 						swap(finger_data[i][0], finger_data[i][1]);
 					if ((finger_release_changed & BIT(i)) && ts->pre_finger_data[0][0] < 2) {
 						if (!ts->first_pressed) {
-							if (ts->finger_count == 0)
-								ts->first_pressed = 1;
 							printk(KERN_INFO "[TP] E%d@%d, %d\n", i + 1,
 							finger_data[i][0], finger_data[i][1]);
 						}
@@ -1567,7 +1549,7 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 									ret = i2c_syn_write_byte_data(ts->client,
 										get_address_base(ts, 0x11, COMMAND_BASE), 0x01);
 									if (ret < 0)
-										i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:Rezero_1", __func__);
+										i2c_syn_error_handler(ts, 0, "w:Rezero_1", __func__);
 									printk(KERN_INFO "[TP] %s: Touch Calibration Confirmed, rezero\n", __func__);
 								} else if (!ts->pre_finger_data[0][0] && ts->finger_count > 1)
 									ts->pre_finger_data[0][0] = 1;
@@ -1597,7 +1579,7 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 						ret = i2c_syn_write_byte_data(ts->client,
 							get_address_base(ts, 0x11, COMMAND_BASE), 0x01);
 						if (ret < 0)
-							i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:Rezero_2", __func__);
+							i2c_syn_error_handler(ts, 0, "w:Rezero_2", __func__);
 						printk(KERN_INFO "[TP] %s: Touch Calibration Confirmed, rezero\n", __func__);
 					}
 #endif
@@ -1632,7 +1614,7 @@ static void synaptics_ts_report_func(struct synaptics_ts_data *ts)
 		get_address_base(ts, 0x54, DATA_BASE) + 1, &data[0], 2);
 
 	if (ret < 0)
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:1", __func__);
+		i2c_syn_error_handler(ts, 0, "w:1", __func__);
 	else {
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, 0x54, DATA_BASE) + 3, ts->temp_report_data,
@@ -1641,7 +1623,7 @@ static void synaptics_ts_report_func(struct synaptics_ts_data *ts)
 			memcpy(&ts->report_data[0], &ts->temp_report_data[0], ts->x_channel * ts->y_channel * 2);
 		else {
 			memset(&ts->report_data[0], 0x0, sizeof(ts->report_data));
-			i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:2", __func__);
+			i2c_syn_error_handler(ts, 0, "r:2", __func__);
 		}
 	}
 	atomic_set(&ts->data_ready, 1);
@@ -1656,7 +1638,7 @@ static void synaptics_ts_status_func(struct synaptics_ts_data *ts)
 
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, DATA_BASE), &data, 1);
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r", __func__);
+		i2c_syn_error_handler(ts, 0, "r", __func__);
 	} else {
 		data &= 0x0F;
 		printk(KERN_INFO "[TP] Device Status = %x\n", data);
@@ -1681,7 +1663,7 @@ static void synaptics_ts_work_func(struct work_struct *work)
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, DATA_BASE) + 1, &buf, 1);
 
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r", __func__);
+		i2c_syn_error_handler(ts, 0, "r", __func__);
 	} else {
 		if (buf & get_address_base(ts, 0x11, INTR_SOURCE))
 			synaptics_ts_finger_func(ts);
@@ -1702,7 +1684,7 @@ static irqreturn_t synaptics_irq_thread(int irq, void *ptr)
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, DATA_BASE) + 1, &buf, 1);
 
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r", __func__);
+		i2c_syn_error_handler(ts, 0, "r", __func__);
 	} else {
 		if (buf & get_address_base(ts, 0x11, INTR_SOURCE))
 			synaptics_ts_finger_func(ts);
@@ -1736,14 +1718,14 @@ static void cable_tp_status_handler_func(int connect_status)
 		connect_status = 1;
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, CONTROL_BASE), &data, 1);
 	if (ret < 0) {
-		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+		i2c_syn_error_handler(ts, 0, "r:1", __func__);
 	} else {
 		ts->cable_config = (data & 0xDF) | (connect_status << 5);
 		printk(KERN_INFO "[TP] %s: ts->cable_config: %x\n", __func__, ts->cable_config);
 		ret = i2c_syn_write_byte_data(ts->client,
 			get_address_base(ts, 0x01, CONTROL_BASE), ts->cable_config);
 		if (ret < 0) {
-			i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "w:2", __func__);
+			i2c_syn_error_handler(ts, 0, "w:2", __func__);
 		}
 	}
 }
@@ -1785,7 +1767,7 @@ static int syn_pdt_scan(struct synaptics_ts_data *ts, int num_page)
 		for (j = (0xEE | (i << 8)); j >= (0xBE | (i << 8)); j -= 6) {
 			ret = i2c_syn_read(ts->client, j, data, 1);
 			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r1", __func__);
+				return i2c_syn_error_handler(ts, 0, "r1", __func__);
 			if (data[0] == 0)
 				break;
 			else
@@ -1808,7 +1790,7 @@ static int syn_pdt_scan(struct synaptics_ts_data *ts, int num_page)
 		for (j = 0; j < num_function[i]; j++) {
 			ret = i2c_syn_read(ts->client, i << 8 | (0xE9 - 6*j), data, 6);
 			if (ret < 0)
-				return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:2", __func__);
+				return i2c_syn_error_handler(ts, 0, "r:2", __func__);
 			ts->address_table[j + k].query_base = i << 8 | data[0];
 			ts->address_table[j + k].command_base = i << 8 | data[1];
 			ts->address_table[j + k].control_base = i << 8 | data[2];
@@ -1835,25 +1817,25 @@ static int syn_get_version(struct synaptics_ts_data *ts)
 	int ret = 0;
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, QUERY_BASE) + 17, data, 4);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:1", __func__);
 	ts->package_id = data[1] << 8 | data[0];
 	printk(KERN_INFO "[TP] %s: package_id: %d\n", __func__, ts->package_id);
 
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, QUERY_BASE) + 16, data, 3);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:2", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:2", __func__);
 	syn_panel_version = data[0] << 8 | data[2];
 	printk(KERN_INFO "[TP] %s: panel_version: %x\n", __func__, syn_panel_version);
 
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x01, QUERY_BASE) + 18, data, 3);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:3", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:3", __func__);
 	ts->packrat_number = data[2] << 16 | data[1] << 8 | data[0];
 	printk(KERN_INFO "[TP] %s: packrat_number: %d\n", __func__, ts->packrat_number);
 
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x34, CONTROL_BASE), data, 4);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:4", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:4", __func__);
 	ts->config_version = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
 	printk(KERN_INFO "[TP] %s: config version: %x\n", __func__, ts->config_version);
 
@@ -1878,7 +1860,7 @@ static int syn_get_information(struct synaptics_ts_data *ts)
 */
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x11, QUERY_BASE) + 1, data, 1);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:1", __func__);
 	if ((data[0] & 0x07) == 5)
 		ts->finger_support = 10;
 	else if ((data[0] & 0x07) < 5)
@@ -1893,7 +1875,7 @@ static int syn_get_information(struct synaptics_ts_data *ts)
 
 	ret = i2c_syn_read(ts->client, get_address_base(ts, 0x11, CONTROL_BASE) + 6, data, 4);
 	if (ret < 0)
-		return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:2", __func__);
+		return i2c_syn_error_handler(ts, 0, "r:2", __func__);
 
 	ts->max[0] = data[0] | data[1] << 8;
 	ts->max[1] = data[2] | data[3] << 8;
@@ -1902,22 +1884,18 @@ static int syn_get_information(struct synaptics_ts_data *ts)
 	if (get_address_base(ts, 0x54, FUNCTION)) {
 		ret = i2c_syn_read(ts->client, get_address_base(ts, 0x54, QUERY_BASE), data, 2);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:3", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:3", __func__);
 
 		ts->y_channel = data[0];
 		ts->x_channel = data[1];
 
 		num_channel = ts->y_channel + ts->x_channel;
 		buf = kzalloc(num_channel + 1, GFP_KERNEL);
-		if (buf == NULL) {
-			printk(KERN_INFO "[TP] %s: memory allocate fail\n", __func__);
-			return -ENOMEM;
-		}
 		ret = i2c_syn_read(ts->client, get_address_base(ts, 0x54, CONTROL_BASE) + 17,
 			buf, num_channel + 1);
 		if (ret < 0) {
 			kfree(buf);
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:4", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:4", __func__);
 		}
 
 		for (i = 1; i < num_channel + 1; i++) {
@@ -1943,7 +1921,7 @@ static int syn_get_information(struct synaptics_ts_data *ts)
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, 0x54, CONTROL_BASE) + 0x10, &ts->relaxation, 1);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:5", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:5", __func__);
 		printk(KERN_INFO "[TP] %s: ts->relaxation: %d\n", __func__, ts->relaxation);
 
 	}
@@ -1952,16 +1930,28 @@ static int syn_get_information(struct synaptics_ts_data *ts)
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, 0x11, CONTROL_BASE) + 0x29, &ts->default_large_obj, 1);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:6", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:6", __func__);
 		printk(KERN_INFO "[TP] %s: ts->default_large_obj: %x\n", __func__, ts->default_large_obj);
+
+		ret = i2c_syn_write_byte_data(ts->client,
+			get_address_base(ts, 0x11, CONTROL_BASE) + 0x29, ts->default_large_obj & 0x7F);
+		if (ret < 0)
+			return i2c_syn_error_handler(ts, 0, "w:1", __func__);
+		printk(KERN_INFO "[TP] %s: set large obj suppression register to: %x\n", __func__, ts->default_large_obj & 0x7F);
 	}
 
 	if (ts->segmentation_bef_unlock) {
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, 0x11, CONTROL_BASE) + 0x22, &ts->segmentation_aft_unlock, 1);
 		if (ret < 0)
-			return i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:7", __func__);
+			return i2c_syn_error_handler(ts, 0, "r:7", __func__);
 		printk(KERN_INFO "[TP] %s: ts->segmentation_aft_unlock: %x\n", __func__, ts->segmentation_aft_unlock);
+
+		ret = i2c_syn_write_byte_data(ts->client,
+			get_address_base(ts, 0x11, CONTROL_BASE) + 0x22, ts->segmentation_bef_unlock);
+		if (ret < 0)
+			return i2c_syn_error_handler(ts, 0, "w:2", __func__);
+		printk(KERN_INFO "[TP] %s: set segmentation aggressiveness to: %x\n", __func__, ts->segmentation_bef_unlock);
 	}
 
 	return 0;
@@ -2006,7 +1996,7 @@ static int synaptics_ts_probe(
 	for (i = 0; i < 10; i++) {
 		ret = i2c_syn_read(ts->client, SYN_F01DATA_BASEADDR, &data, 1);
 		if (ret < 0) {
-			i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "read device status failed!", __func__);
+			i2c_syn_error_handler(ts, 0, "read device status failed!", __func__);
 			goto err_detect_failed;
 		}
 		if (data & 0x44) {
@@ -2107,7 +2097,6 @@ static int synaptics_ts_probe(
 		ts->support_htc_event = pdata->support_htc_event;
 		ts->mfg_flag = pdata->mfg_flag;
 		ts->segmentation_bef_unlock = pdata->segmentation_bef_unlock;
-		ts->i2c_err_handler_en = pdata->i2c_err_handler_en;
 #ifdef SYN_CABLE_CONTROL
 		ts->cable_support = pdata->cable_support; /* Reserve */
 #endif
@@ -2189,7 +2178,7 @@ static int synaptics_ts_probe(
 		ret = i2c_syn_read(ts->client, get_address_base(ts, 0x19, QUERY_BASE) + 1,
 			&ts->key_number, 1);
 		if (ret < 0) {
-			i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "F19 Query fail", __func__);
+			i2c_syn_error_handler(ts, 0, "F19 Query fail", __func__);
 			goto err_F19_query_failed;
 		}
 		for (i = 0; i < ts->key_number; i++) {
@@ -2233,7 +2222,7 @@ static int synaptics_ts_probe(
 				get_address_base(ts, 0x01, CONTROL_BASE) + 1, &ts->intr_bit, 1);
 			if (ret < 0) {
 				free_irq(client->irq, ts);
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "get interrupt bit failed", __func__);
+				i2c_syn_error_handler(ts, 0, "get interrupt bit failed", __func__);
 				goto err_get_intr_bit_failed;
 			}
 			printk(KERN_INFO "[TP] %s: interrupt enable: %x\n", __func__, ts->intr_bit);
@@ -2370,11 +2359,11 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 			ret = i2c_syn_write_byte_data(ts->client,
 				get_address_base(ts, 0x54, CONTROL_BASE) + 0x10, ts->relaxation);
 			if (ret < 0)
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "fast relaxation", __func__);
+				i2c_syn_error_handler(ts, 1, "fast relaxation", __func__);
 			ret = i2c_syn_write_byte_data(ts->client,
 				get_address_base(ts, 0x54, COMMAND_BASE), 0x04);
 			if (ret < 0)
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "force update", __func__);
+				i2c_syn_error_handler(ts, 1, "force update", __func__);
 			printk(KERN_INFO "[TP] touch suspend, fast relasxation: %x\n", ts->relaxation);
 		}
 #endif
@@ -2383,7 +2372,7 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 			ret = i2c_syn_write_byte_data(ts->client,
 				get_address_base(ts, 0x11, CONTROL_BASE) + 0x29, ts->default_large_obj & 0x7F);
 			if (ret < 0)
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "large obj suppression", __func__);
+				i2c_syn_error_handler(ts, 1, "large obj suppression", __func__);
 			printk(KERN_INFO "[TP] touch suspend, set large obj suppression: %x\n", ts->default_large_obj & 0x7F);
 		}
 
@@ -2391,7 +2380,7 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 			ret = i2c_syn_write_byte_data(ts->client,
 				get_address_base(ts, 0x11, CONTROL_BASE) + 0x22, ts->segmentation_bef_unlock);
 			if (ret < 0)
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "segmentation aggressiveness", __func__);
+				i2c_syn_error_handler(ts, 1, "segmentation aggressiveness", __func__);
 			printk(KERN_INFO "[TP] touch suspend, set segmentation aggressiveness: %x\n", ts->segmentation_bef_unlock);
 		}
 	}
@@ -2403,12 +2392,12 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 			ret = i2c_syn_write_byte_data(client,
 				get_address_base(ts, 0x01, CONTROL_BASE), 0x02); /* sleep without calibration*/
 			if (ret < 0)
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "sleep: 0x02", __func__);
+				i2c_syn_error_handler(ts, 1, "sleep: 0x02", __func__);
 		} else {
 			ret = i2c_syn_write_byte_data(client,
 				get_address_base(ts, 0x01, CONTROL_BASE), 0x01); /* sleep */
 			if (ret < 0)
-				i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "sleep: 0x01", __func__);
+				i2c_syn_error_handler(ts, 1, "sleep: 0x01", __func__);
 		}
 	}
 	return 0;
@@ -2434,8 +2423,12 @@ static int synaptics_ts_resume(struct i2c_client *client)
 		ret = i2c_syn_write_byte_data(client,
 			get_address_base(ts, 0x01, CONTROL_BASE), 0x00); /* wake */
 		if (ret < 0)
-			i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "wake up", __func__);
+			i2c_syn_error_handler(ts, 1, "wake up", __func__);
 	}
+
+	ret = synaptics_init_panel(ts);
+	if (ret < 0)
+		printk(KERN_ERR "[TP]TOUCH_ERR: synaptics_ts_resume: synaptics init panel failed\n");
 
 	if (ts->htc_event == SYN_AND_REPORT_TYPE_A) {
 		if (ts->support_htc_event) {
