@@ -43,7 +43,7 @@ static int gpio_input_event(
 			break;
 	if (devnr == ip->input_devs->count) {
 		KEY_LOGE("gpio_input_event: unknown device %p\n", dev);
-		return -EIO;
+		return 0;
 	}
 
 	for (i = 0, ii = ip->info->info; i < ip->info->info_count; i++, ii++) {
